@@ -8,6 +8,7 @@ class TempParserInternals:
         self.nonterminals = set()
         self.productions = []
         self.firsts = {}
+        self.stateid = 0
 
 class Production:
     def __init__(self, lhs, rhs):
@@ -40,6 +41,9 @@ class LR1_Prod(Production):
 class CLR_State:
     def __init__(self, pi, lr1_prods):
         self.lr1_prods = set()
+        self.id = pi.stateid
+        pi.stateid += 1
+
         currSymbols = set()
         finSymbols = set()
         for p in lr1_prods:
@@ -63,7 +67,7 @@ class CLR_State:
                         currSymbols.add(prod.rhs[0])
 
     def __str__(self):
-        return "State:\n\n" + "\n".join(map(str, self.lr1_prods))
+        return "State {}:\n\n".format(self.id) + "\n".join(map(str, self.lr1_prods))
 
 class CLR_Parser:
     def __init__(self, grammar, startsymbol, terminals):
@@ -94,6 +98,8 @@ class CLR_Parser:
         print("Grammar:\n")
         for p in pi.productions:
             print( p )
+
+        print("\nStates:\n")
 
         states = []
         states.append(CLR_State(pi, {LR1_Prod('S\'', [startsymbol], eol, 0)}))
