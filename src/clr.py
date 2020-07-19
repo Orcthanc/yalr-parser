@@ -17,19 +17,19 @@ class Production:
         self.rhs = rhs
 
     def to_LR1(self):
-        return LR1_Prod(self.lhs, self.rhs, eol, 0)
+        return LR1_Prod(self.lhs, self.rhs, set(), 0)
 
     def __str__(self):
         return self.lhs + " -> " + " ".join(self.rhs)
 
 class LR1_Prod(Production):
     def __init__(self, lhs, rhs, la, dot):
-        super().__init__(lhs, rhs)
+        super().__init__(lhs, [r for r in rhs if not r == epsilon])
         self.la = la
         self.dot = dot
 
-    def next(self):
-        return self.la if self.dot == len(self.rhs) else self.rhs[self.dot]
+    def next(self, amount):
+        return self.la if self.dot + amount == len(self.rhs) else {self.rhs[self.dot + amount]}
 
     def __str__(self):
         retstr = self.lhs + " -> "
@@ -40,7 +40,10 @@ class LR1_Prod(Production):
         if self.dot == len(self.rhs):
             retstr += "•"
 
-        return retstr + "{{{}}}".format(self.la)
+        return retstr + "{}".format(self.la)
+
+    def canBeMerged(self, other):
+        return self.lhs == other.lhs and self.rhs == other.rhs and self.dot == other.dot
 
     def __eq__(self, other):
         if not isinstance(other, LR1_Prod):
@@ -49,7 +52,7 @@ class LR1_Prod(Production):
 
     def __hash__(self):
 
-        h = hash("{}{}{}{}".format(self.lhs,self.rhs, self.dot, self.la))
+        h = hash("{}{}{}".format(self.lhs,self.rhs, self.dot))
 
         return h
 
@@ -72,10 +75,13 @@ class CLR_State:
 
         while currSymbols:
             currSym = currSymbols.pop()
-            for prod in [p for p in pi.productions if p.lhs == currSym.next()]:
+            for prod in [p for p in pi.productions if p.lhs in currSym.next(0)]:
                 temp = prod.to_LR1()
-
-                #TODO find la
+                for s in currSym.next(1):
+                    temp.la |= pi.firsts[s]
+                for lah in [x for x in self.lr1_prods if temp.canBeMerged(x)]:
+                    temp.la |= lah.la
+                    self.lr1_prods.discard(lah)
                 self.lr1_prods.add(temp)
                 if not temp in finSymbols:
                     if temp.lhs in pi.nonterminals:
@@ -107,9 +113,9 @@ class CLR_Parser:
 
         pi.terminals = terminals
 
-        print("Terminals: " + ", ".join(pi.terminals) + "\n")
+        print("Terminals: ", pi.terminals, "\n")
 
-        print("Nonterminals: " + ", ".join(pi.nonterminals) + "\n")
+        print("Nonterminals: ", pi.nonterminals, "\n")
 
         pi.productions = sorted(pi.productions, key = lambda x: (x.lhs, x.rhs))
 
@@ -118,8 +124,10 @@ class CLR_Parser:
             print( p )
 
 
-        #calc first sets TODO epsilon
+        #calc first sets
         pi.firsts = dict([(x, {x} if x in pi.terminals else set()) for x in pi.terminals | pi.nonterminals])
+
+        pi.firsts[eol] = {eol}
 
         for p in pi.productions:
             counter = 0
@@ -166,7 +174,7 @@ class CLR_Parser:
 
         print("\nStates:\n")
 
-        states = [CLR_State(pi, {LR1_Prod('S\'', [startsymbol], eol, 0)})]
+        states = [CLR_State(pi, {LR1_Prod('S\'', [startsymbol], {eol}, 0)})]
 
         print(states[0])
 
@@ -196,3 +204,5 @@ if __name__ == '__main__':
         D -> E F
         E -> g | epsilon
         F -> f | epsilon""", 'S', {'a', 'b', 'c', 'f', 'g', 'h'})
+
+    CLR_Parser("""S -> ( S ) | S , S | epsilon""", 'S', {'(', ')', ','})
