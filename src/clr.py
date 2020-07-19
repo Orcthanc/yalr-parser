@@ -74,7 +74,7 @@ class CLR_State:
             currSym = currSymbols.pop()
             for prod in [p for p in pi.productions if p.lhs == currSym.next()]:
                 temp = prod.to_LR1()
-                
+
                 #TODO find la
                 self.lr1_prods.add(temp)
                 if not temp in finSymbols:
@@ -119,13 +119,14 @@ class CLR_Parser:
 
 
         #calc first sets TODO epsilon
-        firsts = dict([(x, [{x} if x in pi.terminals else set(), set() if x in pi.terminals else {x}]) for x in pi.terminals | pi.nonterminals])
+        pi.firsts = dict([(x, {x} if x in pi.terminals else set()) for x in pi.terminals | pi.nonterminals])
 
         for p in pi.productions:
             counter = 0
             while True:
                 currSym = p.rhs[counter]
-                firsts[p.lhs][0 if currSym in pi.terminals else 1].add(currSym)
+                if currSym in pi.terminals:
+                    pi.firsts[p.lhs].add(currSym)
                 if currSym is not epsilon:
                     break
 
@@ -134,7 +135,7 @@ class CLR_Parser:
                     break
 
 
-        eclipsable = set([x for x in firsts.keys() if epsilon in firsts[x][0]])
+        eclipsable = set([x for x in pi.firsts.keys() if epsilon in pi.firsts[x]])
 
 
         while True:
@@ -143,26 +144,19 @@ class CLR_Parser:
             for prod in pi.productions:
                 broken = False
                 for rh in prod.rhs:
-                    if not all([p in firsts[prod.lhs][0] for p in firsts[rh][0] if not p == epsilon]):
-                        firsts[prod.lhs][0] |= firsts[rh][0] - { epsilon }
-                        updated = True
-                    #TODO remove
-                    if not all([p in firsts[prod.lhs][1] for p in firsts[rh][1]]):
-                        firsts[prod.lhs][1] |= firsts[rh][1]
+                    if not all([p in pi.firsts[prod.lhs] for p in pi.firsts[rh] if not p == epsilon]):
+                        pi.firsts[prod.lhs] |= pi.firsts[rh] - { epsilon }
                         updated = True
                     if not rh in eclipsable:
                         broken = True
                         break
                 if not broken:
                     eclipsable |= { prod.lhs }
-                    firsts[prod.lhs][0] |= {epsilon}
-                    
+                    pi.firsts[prod.lhs] |= {epsilon}
+
 
             if not updated:
                 break
-
-        pi.firsts = dict([(x, y[0]) for x, y in firsts.items()])
-        print(pi.firsts)
 
         print("\nFirst-Sets:\n")
         for k, v in [p for p in pi.firsts.items() if not p[0] in pi.terminals]:
@@ -181,7 +175,7 @@ class CLR_Parser:
 
 
 if __name__ == '__main__':
-    
+
     CLR_Parser("""T -> ( E ) | T * T
         E -> E + E | T
         T -> i""", 'E', {'i', '*', '(', ')', '+'})
@@ -201,4 +195,4 @@ if __name__ == '__main__':
         C -> b C | epsilon
         D -> E F
         E -> g | epsilon
-        F -> f | epsilon""", 'S', {'a', 'b', 'c', 'f', 'g'})
+        F -> f | epsilon""", 'S', {'a', 'b', 'c', 'f', 'g', 'h'})
