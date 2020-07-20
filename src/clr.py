@@ -1,5 +1,7 @@
 #!/bin/env python3
 
+import copy
+
 eol = '$'
 epsilon = 'epsilon'
 
@@ -60,12 +62,13 @@ class CLR_State:
     def __init__(self, pi, lr1_prods):
         self.lr1_prods = set()
         self.id = pi.stateid
-        pi.stateid += 1
 
         currSymbols = set()
         finSymbols = set()
         for p in lr1_prods:
             self.lr1_prods |= {p}
+            if p.dot >= len(p.rhs):
+                continue
             symbol = p.rhs[p.dot]
             if p in finSymbols:
                 continue
@@ -87,6 +90,21 @@ class CLR_State:
                     if temp.lhs in pi.nonterminals:
                         finSymbols.add(temp)
                         currSymbols.add(temp)
+
+    def getNextProds(self, nextSymbol):
+        temp = [copy.deepcopy(p) for p in self.lr1_prods if nextSymbol in p.next(0) and not p.dot == len(p.rhs)]
+        for p in temp:
+            p.dot += 1
+        return temp
+
+    def __eq__(self, other):
+        if not isinstance(other, CLR_State):
+            return False
+        if not len(self.lr1_prods) == len(other.lr1_prods):
+            return False
+        if not self.lr1_prods >= other.lr1_prods:
+            return False
+        return True
 
     def __str__(self):
         return "State {}:\n\n".format(self.id) + "\n".join(map(str, self.lr1_prods))
@@ -176,7 +194,27 @@ class CLR_Parser:
 
         states = [CLR_State(pi, {LR1_Prod('S\'', [startsymbol], {eol}, 0)})]
 
-        print(states[0])
+        pi.stateid += 1
+
+        counter = 0
+
+        while True:
+            for sym in pi.terminals | pi.nonterminals:
+                temp = states[counter].getNextProds(sym)
+                if temp:
+                    newstate = CLR_State(pi, temp)
+                    existing = [p for p in states if p == newstate]
+                    if not existing:
+                        pi.stateid += 1
+                        states.append(newstate)
+                #print(sym, ", ".join(map(str, states[counter].getNextProds(sym))))
+
+            counter += 1
+            if counter == len(states):
+                break
+
+        for s in states:
+            print(s, "\n")
 
 
         print("\n" * 5)
