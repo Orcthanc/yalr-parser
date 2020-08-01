@@ -1,9 +1,23 @@
 #!/bin/env python3
 
 import copy
+from enum import Enum
 
 eol = '$'
 epsilon = 'epsilon'
+
+class SRG(Enum):
+    SHIFT = 0
+    REDUCE = 1
+    GOTO = 2
+
+class Action:
+    def __init__(self, action, number):
+        self.action = action
+        self.number = number
+
+    def __repr__(self):
+        return "({} {})".format(self.action, self.number)
 
 class TempParserInternals:
     def __init__(self):
@@ -12,21 +26,23 @@ class TempParserInternals:
         self.productions = []
         self.firsts = {}
         self.stateid = 0
+        self.table = []
 
 class Production:
-    def __init__(self, lhs, rhs):
+    def __init__(self, lhs, rhs, Id):
         self.lhs = lhs
         self.rhs = rhs
+        self.Id = Id
 
     def to_LR1(self):
-        return LR1_Prod(self.lhs, self.rhs, set(), 0)
+        return LR1_Prod(self.lhs, self.rhs, self.Id, set(), 0)
 
     def __str__(self):
         return self.lhs + " -> " + " ".join(self.rhs)
 
 class LR1_Prod(Production):
-    def __init__(self, lhs, rhs, la, dot):
-        super().__init__(lhs, [r for r in rhs if not r == epsilon])
+    def __init__(self, lhs, rhs, Id, la, dot):
+        super().__init__(lhs, [r for r in rhs if not r == epsilon], Id)
         self.la = la
         self.dot = dot
 
@@ -44,8 +60,22 @@ class LR1_Prod(Production):
 
         return retstr + "{}".format(self.la)
 
+    def __repr__(self):
+        retstr = self.lhs + " -> "
+        for i in range(0, len(self.rhs)):
+            if i == self.dot:
+                retstr += "• "
+            retstr +=  self.rhs[i] + " "
+        if self.dot == len(self.rhs):
+            retstr += "•"
+
+        return retstr + "{}".format(self.la)
+
     def canBeMerged(self, other):
         return self.lhs == other.lhs and self.rhs == other.rhs and self.dot == other.dot
+
+    def final(self):
+        return self.dot == len(self.rhs)
 
     def __eq__(self, other):
         if not isinstance(other, LR1_Prod):
@@ -97,6 +127,10 @@ class CLR_State:
             p.dot += 1
         return temp
 
+    def reduceSet(self):
+        prods = [p for p in self.lr1_prods if p.final()]
+        return prods
+
     def __eq__(self, other):
         if not isinstance(other, CLR_State):
             return False
@@ -118,6 +152,7 @@ class CLR_Parser:
 
         print("Startsymbol: {}\n".format(startsymbol))
 
+        ProdId = 1
         for line in grammar.splitlines():
             arrow = line.split('->')
             lhs = arrow[0].strip()
@@ -125,7 +160,8 @@ class CLR_Parser:
             for option in arrow[1].split('|'):
                 rhs = [x.strip() for x in option.split()]
                 pi.nonterminals |= set(rhs)
-                pi.productions.append(Production(lhs, rhs))
+                pi.productions.append(Production(lhs, rhs, ProdId))
+                ProdId += 1
 
         pi.nonterminals -= terminals
 
@@ -192,22 +228,44 @@ class CLR_Parser:
 
         print("\nStates:\n")
 
-        states = [CLR_State(pi, {LR1_Prod('S\'', [startsymbol], {eol}, 0)})]
+        states = [CLR_State(pi, {LR1_Prod('S\'', [startsymbol], 0, {eol}, 0)})]
 
         pi.stateid += 1
 
         counter = 0
 
         while True:
-            for sym in pi.terminals | pi.nonterminals:
+            currId = states[counter].id
+            for sym in pi.terminals | pi.nonterminals - { epsilon }:
                 temp = states[counter].getNextProds(sym)
                 if temp:
+                    targetId = -1
                     newstate = CLR_State(pi, temp)
                     existing = [p for p in states if p == newstate]
                     if not existing:
                         pi.stateid += 1
                         states.append(newstate)
-                #print(sym, ", ".join(map(str, states[counter].getNextProds(sym))))
+                        targetId = pi.stateid
+                    else:
+                        targetId = existing[0].id
+                    if currId >= len(pi.table):
+                        pi.table.append(dict())
+                    pi.table[currId][sym] = Action(SRG.SHIFT if sym in pi.terminals else SRG.GOTO, targetId)
+
+            temp = states[counter].reduceSet()
+            #print(temp, currId)
+            for rule in temp:
+                if currId >= len(pi.table):
+                    pi.table.append(dict())
+                for s in rule.la:
+                    if s in pi.table[currId]:
+                            if pi.table[currId][s].action == SRG.SHIFT:
+                                print("Shift-Reduce conflict in state {} for symbol {}".format(currId, s))
+                                continue
+                            else:
+                                print("Reduce-reduce conflict in state {} for rules {} and {} with symbol {}".format(currId, pi.table[currId][s].number, rule.Id, s))
+                    pi.table[currId][s] = Action(SRG.REDUCE, rule.Id)
+            #print(sym, ", ".join(map(str, states[counter].getNextProds(sym))))
 
             counter += 1
             if counter == len(states):
@@ -215,6 +273,12 @@ class CLR_Parser:
 
         for s in states:
             print(s, "\n")
+
+        print("\nTable:\n")
+
+        for k in range(0, len(pi.table)):
+            print(k, pi.table[k])
+        #print(pi.table)
 
 
         print("\n" * 5)
@@ -244,3 +308,5 @@ if __name__ == '__main__':
         F -> f | epsilon""", 'S', {'a', 'b', 'c', 'f', 'g', 'h'})
 
     CLR_Parser("""S -> ( S ) | S , S | epsilon""", 'S', {'(', ')', ','})
+
+    CLR_Parser("""S -> S + S | a""", 'S', {'a', '+'})
