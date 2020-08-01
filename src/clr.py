@@ -253,7 +253,6 @@ class CLR_Parser:
                     pi.table[currId][sym] = Action(SRG.SHIFT if sym in pi.terminals else SRG.GOTO, targetId)
 
             temp = states[counter].reduceSet()
-            #print(temp, currId)
             for rule in temp:
                 if currId >= len(pi.table):
                     pi.table.append(dict())
@@ -265,7 +264,6 @@ class CLR_Parser:
                             else:
                                 print("Reduce-reduce conflict in state {} for rules {} and {} with symbol {}".format(currId, pi.table[currId][s].number, rule.Id, s))
                     pi.table[currId][s] = Action(SRG.REDUCE, rule.Id)
-            #print(sym, ", ".join(map(str, states[counter].getNextProds(sym))))
 
             counter += 1
             if counter == len(states):
@@ -282,6 +280,8 @@ class CLR_Parser:
 
 
         print("\n" * 5)
+
+        self.table = pi.table
 
 
 if __name__ == '__main__':
